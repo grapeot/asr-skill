@@ -1,0 +1,9 @@
+{
+  "rows": [
+    {"output_index": 0, "source_ids": ["seg-001"]},
+    {"output_index": 1, "source_ids": ["seg-002"]}
+  ],
+  "deleted": [
+    {"source_ids": ["seg-003"], "reason": "filler"}
+  ]
+}

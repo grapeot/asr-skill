@@ -1,0 +1,5 @@
+{
+  "0900:A": {"name": "Alice", "status": "mapped"},
+  "0900:B": {"name": "Bob", "status": "mapped"},
+  "0900:C": {"name": null, "status": "unknown"}
+}
