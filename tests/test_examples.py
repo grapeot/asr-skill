@@ -2,7 +2,7 @@ import csv
 import json
 from pathlib import Path
 
-from asr_skill.contracts import NAME_MAP_STATUSES, RAW_CSV_FIELDS, RICH_SEGMENT_FIELDS
+from asr_skill.contracts import NAME_MAP_STATUSES, RAW_CSV_FIELDS, RICH_SEGMENT_FIELDS, TIMED_CSV_FIELDS
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "examples" / "synthetic"
@@ -32,20 +32,51 @@ def test_csv_contract_and_traceability():
     with (FIXTURES / "alice_bob_readable.csv").open(encoding="utf-8", newline="") as handle:
         readable = list(csv.DictReader(handle))
     assert list(raw[0]) == list(RAW_CSV_FIELDS)
-    assert list(readable[0]) == list(RAW_CSV_FIELDS)
+    assert list(readable[0]) == list(TIMED_CSV_FIELDS)
     assert [row["speaker"] for row in readable] == ["Alice", "Bob"]
     assert "3" in readable[0]["content"] and "not" in readable[1]["content"]
     source_map = json.loads((FIXTURES / "alice_bob_source_map.json").read_text(encoding="utf-8"))
     kept = [sid for row in source_map["rows"] for sid in row["source_ids"]]
-    deleted = [sid for row in source_map["deleted"] for sid in row["source_ids"]]
-    assert kept + deleted == ["seg-001", "seg-002", "seg-003"]
-    assert source_map["deleted"][0]["reason"] == "filler"
+    excluded = [sid for row in source_map["excluded"] for sid in row["source_ids"]]
+    assert kept + excluded == ["seg-001", "seg-002", "seg-003"]
+    assert source_map["excluded"][0]["reason"] == "filler"
+
+
+def test_public_examples_pass_review():
+    from asr_skill.validate import review
+
+    segments = _rich_rows()
+    source_map = json.loads((FIXTURES / "alice_bob_source_map.json").read_text(encoding="utf-8"))
+    name_map = json.loads((FIXTURES / "alice_bob_name_map.json").read_text(encoding="utf-8"))
+    by_id = {row["segment_id"]: row for row in segments}
+    edited = {
+        "rows": [
+            {
+                "source_ids": item["source_ids"],
+                "start": by_id[item["source_ids"][0]]["start"],
+                "end": by_id[item["source_ids"][0]]["end"],
+                "speaker": name_map[by_id[item["source_ids"][0]]["file"]][
+                    by_id[item["source_ids"][0]]["speaker"]
+                ]["name"],
+                "content": by_id[item["source_ids"][0]]["content"],
+            }
+            for item in source_map["rows"]
+        ],
+        "uncertain": source_map["uncertain"],
+        "excluded": source_map["excluded"],
+        "corrections": source_map["corrections"],
+        "name_map": name_map,
+    }
+    result = review(segments, edited)
+    assert result["ok"] is True, result
+    assert "excluded" in source_map and "uncertain" in source_map
 
 
 def test_name_map_keeps_unknown():
     name_map = json.loads((FIXTURES / "alice_bob_name_map.json").read_text(encoding="utf-8"))
-    assert name_map["0900:A"]["name"] == "Alice"
-    assert name_map["0900:B"]["name"] == "Bob"
-    assert name_map["0900:C"]["name"] is None
-    assert name_map["0900:C"]["status"] == "unknown"
-    assert {item["status"] for item in name_map.values()} <= set(NAME_MAP_STATUSES)
+    labels = name_map["synthetic_0900.wav"]
+    assert labels["0900:A"]["name"] == "Alice"
+    assert labels["0900:B"]["name"] == "Bob"
+    assert labels["0900:C"]["name"] is None
+    assert labels["0900:C"]["status"] == "unknown"
+    assert {item["status"] for item in labels.values()} <= set(NAME_MAP_STATUSES)

@@ -1,0 +1,6 @@
+# Verified on this machine: CPython 3.12, wheel tag cp312-cp312-macosx_26_0_arm64.
+# That tag does not mean every older Apple Silicon macOS release can install it.
+# MLX does not run on Linux CI. Do not substitute another ASR model if this install fails.
+mlx==0.32.3
+mlx-qwen3-asr==0.4.4
+numpy==2.5.3

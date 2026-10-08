@@ -2,15 +2,6 @@
 
 ## 2026-10-07
 
-- This scaffold was created and models were not run.
-- Docs were checked against the CLI: planned commands are specified, not shipped.
+- Review fixes landed.
 
-Local verification: `ruff check .` passed. `python -m pytest tests/ -q` passed, 13 tests. `asr-skill version` printed `phase=scaffold implemented=false`. `asr-skill doctor` printed `implemented` false. `asr-skill diarize` exited 3. Models were not run.
-
-## Lessons Learned
-
-- Do not describe the scaffold as a working transcriber.
-- Do not add PyTorch or MLX to the default dependencies.
-- Do not clean with a filler expression or assign speakers by keyword.
-- Do not commit audio, logs, weights, or environment files.
-- Compatibility wrappers are later and do not live in this repository.
+Local verification: `ruff check src tests` passed. `python -m pytest tests/` passed, including the round-2 regressions. The independent rereview repro also passed after these fixes. Acoustic model code was not rerun. `prepare-edit` and `finalize-edit` were rerun on the previous synthetic rich file in a new work directory; the middle-uncertain contract is covered by offline tests, and the earlier fresh smoke remains the acoustic evidence. Validation still records `equivalence_proven` false.

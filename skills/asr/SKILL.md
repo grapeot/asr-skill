@@ -1,47 +1,99 @@
 ---
 name: asr
-description: Scaffold for local speaker-attributed transcription. The pipeline is not implemented. Use it to recognize that refusal and, later, to install the single root skill and CLI from the GitHub URL.
+description: Local speaker-attributed transcription with Nemotron diarization on CPU and Qwen3-ASR on Apple Silicon. The current agent can prepare, edit, and finalize a transcript. Acoustic inference stays on the machine. A configured editor may send text to its own service.
 ---
 
-# Acoustic Speech Recognition and Speaker Attribution Skill
+# ASR Skill
 
-This skill guide defines the operational contract and verification boundaries for an automated coding agent interacting with the asr-skill codebase. The current repository represents an early architectural scaffold. The end-to-end transcription and diarization pipeline is not implemented. The agent must recognize this refusal boundary, enforce strict operational safety, and avoid simulating nonexistent capabilities.
+This skill enables local speaker-attributed speech transcription and guarded editing on Apple Silicon. Diarization runs on CPU using nvidia/Nemotron-3-Diarization, and speech recognition runs on Apple Silicon via MLX using Qwen/Qwen3-ASR-1.7B. Acoustic inference stays on this machine. If an external editor is configured, that editor may send text to its own service. There is no promise that text never leaves the machine.
 
-## Operational Boundaries and Immediate Refusal
+## Repository and Registration
 
-When a user instructs the agent to transcribe audio, diarize recorded conversations, align word timestamps, clean transcript text, or execute the transcription pipeline, the agent must immediately refuse the task. The agent must state clearly that the repository is a scaffold that does not implement audio processing, and then halt execution.
+The repository is located at https://github.com/grapeot/asr-skill . Supported installation is a persistent checkout, such as /path/to/asr-skill . Copied skill files, wheel distributions, and pipx installations are not supported.
 
-Under no circumstances should the agent attempt to circumvent this refusal. The agent must not attempt to download machine learning model weights, must not execute `ffmpeg` on user recording files, and must never claim that a transcript has been generated. The agent must report the true state of the repository calmly and accurately without attempting to synthesize mock results.
+An agent starts from the host AGENTS.md or CLAUDE.md, follows any routing file, clones or vendors this repository, and registers only skills/asr/SKILL.md. The pointer must locate that persistent checkout.
 
-## Objective Acceptance Criteria for a Cold Agent
+## Environment and Sub-Environments
 
-An agent inspecting this repository can verify compliance with the scaffold contract through four programmatic checks:
+Within the persistent checkout, set up the primary environment using uv venv --python 3.12 . Activate the environment with source .venv/bin/activate, or invoke .venv/bin/asr-skill explicitly. Install development dependencies using uv pip install -e '.[dev]' . ffmpeg must be available on PATH.
 
-1. CLI Version Output: The agent runs `asr-skill version` (or `python -m asr_skill version`). Compliance requires the output to contain both `phase=scaffold` and `implemented=false`.
-2. CLI Doctor Diagnostic: The agent runs `asr-skill doctor` and parses the stdout JSON payload. Compliance requires that `implemented` is false and `models_ready` is false. The command must finish without making network requests or invoking external media libraries.
-3. Planned Command Rejection: The agent tests any planned command (`init`, `diarize`, `align`, `clean`, `run`, or `smoke`). Compliance requires the command to terminate with exit code 3 and return a JSON payload with an `error` field set to `not_implemented`.
-4. Dependency Isolation: The agent confirms that the package `asr_skill` imports cleanly in an isolated Python 3.12 environment without requiring PyTorch, Transformers, or Apple MLX.
+Execute asr-skill init to build the isolated sub-environments .venvs/diar and .venvs/asr from requirements/diar.txt and requirements/asr.txt. Dependency installation may use the network. When using asr-skill init --no-download, model weights are not downloaded; if the local cache is missing, load fails.
 
-If any of these conditions fail, or if a command claims that transcription is operational, the repository contract has been violated.
+Run asr-skill doctor to inspect the environment. It loads both models from the local cache and does not download weights. The command asr-skill doctor --no-load checks imports and declared pins only.
 
-## Future Installation Protocol
+## Target Platform and Pins
 
-The GitHub URL is the intended remote. It is not published by this scaffold, so do not clone it as a working install source today. While `asr-skill version` reports `phase=scaffold`, the steps below are documentation only. Do not run them, and do not download models.
+The package is verified on one Apple Silicon machine, CPython 3.12, not on every Apple Silicon OS release. Linux CI does not run these acoustic models. The doctor command refuses a version or commit mismatch. Explicit download failures are not retried by this package, though HTTP libraries may implement transport retries.
 
-When an agent is tasked in a later phase, after the pipeline exists, with installing the skill and CLI from `https://github.com/grapeot/asr-skill` on branch `master`, it follows this procedure:
+The declared pins are:
 
-First, the agent inspects the target workspace to discover existing agent routing files, starting from `AGENTS.md` or `CLAUDE.md`. The agent checks whether the workspace maintains a skill registry at `rules/skills/INDEX.md` or `skills/INDEX.md`. If an index file is present, the agent registers the skill path there. If no index file exists, the agent adds a concise reference inside `AGENTS.md` or `CLAUDE.md`. The agent exposes exactly one root skill at `skills/asr/SKILL.md` and avoids creating symlinks into global user skill directories.
+- torch 2.14.0 with wheel tag cp312-cp312-macosx_14_0_arm64
+- transformers git commit f339035b986aaf719bc6f5ea92342f73c498cb0e reporting 5.18.0.dev0
+- librosa 1.0.0
+- numpy 2.5.3
+- mlx 0.32.3 with wheel tag cp312-cp312-macosx_26_0_arm64
+- mlx-qwen3-asr 0.4.4
 
-Second, the agent establishes the local Python environment using `uv`. If `.venv` is missing, the agent runs `uv venv`. If `.venv` already exists, the agent activates it, then executes `uv pip install -e '.[dev]'`. Standard pip commands must not be used. The agent then verifies that `ffmpeg` is available on the system PATH.
+## Command Set
 
-Third, the agent documents the two distinct runtime environments: a CPU-based environment for `nvidia/Nemotron-3-Diarization` using an audio frame classification build of transformers, and an Apple Silicon environment for `Qwen/Qwen3-ASR-1.7B` using MLX. The agent notes that model weights are downloaded only upon explicit request to `HF_HOME`. The installation procedure must remain reproducible and vendor neutral, avoiding dependencies on any specific commercial LLM provider.
+The CLI provides the following commands:
 
-## Documentation References
+- version
+- doctor
+- init
+- diarize --input --work-dir
+- align --input --work-dir
+- prepare-edit --rich --task-dir [--confirmed-name-map]
+- finalize-edit --rich --task-dir --output-csv --source-map --name-map [--csv-format legacy|timed]
+- clean --editor-cmd
+- run
+- smoke
+- legacy-diarize --date-dir [--output] [--model] [--work-dir]
+- legacy-align --date-dir --diarization --output [--rich-output] [--model] [--work-dir]
 
-For technical specifications and project background, consult the following project documents:
+The align command always writes transcript.raw.csv as speaker,content and transcript.timed.csv as start,end,speaker,content. The legacy-align command defaults to the two-column CSV. The --csv-format option accepts legacy or timed. It applies to clean, finalize-edit, and the readable CSV produced by run. The default readable format is timed.
 
-- [Project Overview](../../README.md)
-- [Product Requirements Document](../../docs/prd.md)
-- [Architecture and Technical Design](../../docs/rfc.md)
-- [Test Strategy and Verification](../../docs/test.md)
-- [Changelog and Lessons Learned](../../docs/working.md)
+## The Agent as Editor Without External Binary
+
+The current agent is the editor. The agent performs semantic editing without requiring an external binary through the following steps.
+
+First, run the prepare-edit command to stage editing inputs:
+.venv/bin/asr-skill prepare-edit --rich /path/to/rich.json --task-dir /path/to/task_dir
+
+You may optionally include --confirmed-name-map /path/to/name_map.json to seed confirmed speaker mappings.
+
+Second, read instructions.md and segments.jsonl inside /path/to/task_dir . Review each segment text and speaker label.
+
+Third, construct and write /path/to/task_dir/edited.json . The JSON structure must include the following keys:
+- rows: list of active segment objects.
+- excluded: list of segment objects excluded from the transcript. Use excluded, not deleted. Each source segment id must appear exactly once across rows, uncertain, and excluded.
+- uncertain: a list of row objects, not a list of ids. Each object has source_ids, start, end, speaker, and content. It can be first, middle, or last, and the readable CSV keeps that row at the source position with speaker unknown.
+- corrections: list of explicit token modifications. If a digit or negation token is changed or removed, provide before matching the source token, a non-empty after that appears in exported text, and a reason. The string guard does not prove semantic equivalence; equivalence_proven is false.
+- name_map: mapping of filename to speaker label. Each entry specifies status (mapped or unknown) and origin (caller or editor). A caller entry is not changed. An unknown entry has an empty name string. Do not invent a name that the words in that file do not support, such as Alice or Bob.
+
+A combined acoustic label such as 0900:A+0900:B may become one name only with reason overlap_attribution and a confidence value. Otherwise, keep the combined label or unknown, and keep the row.
+
+Fourth, run finalize-edit to export results:
+.venv/bin/asr-skill finalize-edit --rich /path/to/rich.json --task-dir /path/to/task_dir --output-csv /path/to/output.csv --source-map /path/to/source_map.json --name-map /path/to/name_map.json --csv-format timed
+
+An optional external adapter may be supplied to clean via --editor-cmd /path/to/adapter . The adapter must be one executable file plus the task directory as its only argument. A shell string is not accepted. The package does not include a semantic editor and does not call a vendor.
+
+## String Guard Rules
+
+The string guard rejects an unannotated loss of a digit or negation token. Matching is evaluated by token, so 3 inside 13 does not count, and not inside note does not count. Any unannotated drop of digits or negation words triggers validation failure.
+
+## Resumption, Caching, and Legacy Support
+
+Resume skips a file only when the checkpoint parses, status is complete, and the input hash, parameter hash, and current diarization hash match. Checkpoints use a path hash, not only the basename. Duplicate basenames in one batch are rejected.
+
+An empty speech result is a completed empty output, not a reason to rerun forever. A failed diarization does not leave the previous combined file as the current result. An acoustic rerun moves an existing readable draft to history instead of deleting it.
+
+Legacy commands keep date_dir and audio_dir and find audio from the diarization JSON. They do not write checkpoints into the date directory, and they refuse to overwrite an existing output that this tool does not own.
+
+## Testing and Boundaries
+
+A single file longer than 7200 seconds is rejected before a model loads. Splitting a file makes separate files; a speaker letter does not continue across slices. Several files that add up to a long day are not one file over the limit.
+
+A synthetic smoke test is executed with asr-skill smoke. It uses macOS say voices Eddy and Daniel when they exist. It does not prove who spoke. Overlap attribution is covered by offline fixtures, not by a claim that a real overlapping recording was measured.
+
+Recordings and weights should stay out of git. The ignore rules cover the generated names this tool writes, and they are not a guarantee against every possible path.
