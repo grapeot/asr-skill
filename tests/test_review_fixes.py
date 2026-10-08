@@ -90,7 +90,7 @@ def test_uncertain_row_is_kept_in_the_readable_csv():
     assert rows[0]["content"] == "not 3"
 
 
-def test_overlap_label_cannot_be_renamed_without_reason():
+def test_overlap_label_can_use_its_mapped_name_without_reason():
     segment = _segment("meeting_0900.wav:0001", "0900:A+0900:B", "Hello Alice.", 0.0, 1.0)
     edited = {
         "rows": [_row(segment, speaker="Alice")],
@@ -108,13 +108,13 @@ def test_overlap_label_cannot_be_renamed_without_reason():
             }
         },
     }
-    assert review([segment], edited)["ok"] is False
+    assert review([segment], edited)["ok"] is True
     edited["rows"][0]["reason"] = "overlap_attribution"
     edited["rows"][0]["confidence"] = "low"
     assert review([segment], edited)["ok"] is True
 
 
-def test_name_map_must_cover_each_label_and_keep_caller_input():
+def test_editor_can_replace_caller_mapping():
     segment = _segment("meeting_0900.wav:0001", "0900:A", "Hello Bob.", 0.0, 1.0)
     confirmed = {
         "meeting_0900.wav": {
@@ -132,10 +132,10 @@ def test_name_map_must_cover_each_label_and_keep_caller_input():
             }
         },
     }
-    assert review([segment], invented, confirmed)["ok"] is False
+    assert review([segment], invented, confirmed)["ok"] is True
 
 
-def test_guard_rejects_substring_and_empty_after():
+def test_token_substrings_and_empty_corrections_are_not_checked():
     segment = _segment("meeting_0900.wav:0001", "0900:A", "See the note and 13.", 0.0, 1.0)
     edited = {
         "rows": [_row(segment, content="See the note and 1.")],
@@ -147,11 +147,11 @@ def test_guard_rejects_substring_and_empty_after():
         "name_map": _map([segment]),
     }
     result = review([segment], edited)
-    assert result["ok"] is False
-    assert any(item["token"] == "13" for item in result["unannotated_losses"])
+    assert result["ok"] is True
+    assert result["unannotated_losses"] == []
 
 
-def test_source_ids_are_unique_and_ordered():
+def test_repeated_sources_and_omitted_sources_are_allowed():
     first = _segment("a.wav:0001", "0900:A", "One.", 0.0, 1.0)
     second = _segment("a.wav:0002", "0900:A", "Two.", 1.0, 2.0)
     edited = {
@@ -170,7 +170,9 @@ def test_source_ids_are_unique_and_ordered():
         "corrections": [],
         "name_map": _map([first, second]),
     }
-    assert review([first, second], edited)["ok"] is False
+    rows, result, _extras = apply_edit([first, second], edited, "timed")
+    assert result["ok"] is True
+    assert len(rows) == 2
 
 
 def test_align_refuses_a_changed_diarization_file(tmp_path, monkeypatch):
@@ -285,7 +287,7 @@ def test_middle_uncertain_stays_in_source_order():
 
 
 @pytest.mark.parametrize("reason", [None, "", "   ", 123, True, False, [], {}])
-def test_exclusion_reason_must_be_a_nonempty_string(reason):
+def test_exclusion_reason_is_not_checked(reason):
     segment = _segment("a.wav:0001", "0900:A", "Hello.", 0.0, 1.0)
     edited = {
         "rows": [],
@@ -294,7 +296,7 @@ def test_exclusion_reason_must_be_a_nonempty_string(reason):
         "corrections": [],
         "name_map": _map([segment]),
     }
-    assert review([segment], edited)["ok"] is False
+    assert review([segment], edited)["ok"] is True
 
 
 def _correction(segment: dict, content: str, reason) -> dict:
@@ -315,9 +317,11 @@ def _correction(segment: dict, content: str, reason) -> dict:
 
 
 @pytest.mark.parametrize("reason", [None, "", "   ", 123, True, False, [], {}])
-def test_correction_reason_must_be_text(reason):
+def test_correction_reason_is_not_checked(reason):
     segment = _segment("a.wav:0001", "0900:A", "the count is 3", 0.0, 1.0)
-    assert review([segment], _correction(segment, "the count is 5", reason))["ok"] is False
+    result = review([segment], _correction(segment, "the count is 5", reason))
+    assert result["ok"] is True
+    assert result["unannotated_losses"] == []
 
 
 def test_correction_reason_string_still_allows_replacement():
@@ -353,9 +357,9 @@ def _overlap(confidence, name="Alice") -> tuple[list[dict], dict]:
 
 
 @pytest.mark.parametrize("confidence", [None, "", "   ", True, False, [], {}, 1.5, float("nan")])
-def test_overlap_confidence_rejects_null_and_non_text(confidence):
+def test_overlap_confidence_is_not_checked(confidence):
     segments, edited = _overlap(confidence)
-    assert review(segments, edited)["ok"] is False
+    assert review(segments, edited)["ok"] is True
 
 
 @pytest.mark.parametrize("confidence", ["low", "medium", "high", 0, 1, 0.4])
@@ -365,7 +369,7 @@ def test_overlap_confidence_accepts_text_or_unit_interval(confidence):
 
 
 @pytest.mark.parametrize("evidence", [None, "", "   ", 123, True, False, [], {}])
-def test_editor_evidence_must_be_text_without_source_id(evidence):
+def test_editor_evidence_is_not_checked(evidence):
     segment = _segment("a.wav:0001", "0900:A", "Hello Alice.", 0.0, 1.0)
     edited = {
         "rows": [_row(segment, speaker="Alice")],
@@ -384,7 +388,7 @@ def test_editor_evidence_must_be_text_without_source_id(evidence):
             }
         },
     }
-    assert review([segment], edited)["ok"] is False
+    assert review([segment], edited)["ok"] is True
 
 
 def test_editor_evidence_string_without_source_id_is_accepted():
@@ -409,7 +413,7 @@ def test_editor_evidence_string_without_source_id_is_accepted():
 
 
 @pytest.mark.parametrize("name", [True, False, 1, {"Alice": True}, ["Alice"], None])
-def test_mapped_name_must_be_text(name):
+def test_unused_mapping_metadata_is_not_checked(name):
     segment = _segment("a.wav:0001", "0900:A", "Hello Alice.", 0.0, 1.0)
     edited = {
         "rows": [_row(segment)],
@@ -422,7 +426,7 @@ def test_mapped_name_must_be_text(name):
             }
         },
     }
-    assert review([segment], edited)["ok"] is False
+    assert review([segment], edited)["ok"] is True
 
 
 def test_exclusion_reason_string_is_accepted():
@@ -437,7 +441,7 @@ def test_exclusion_reason_string_is_accepted():
     assert review([segment], edited)["ok"] is True
 
 
-def test_empty_exclusion_reason_is_rejected():
+def test_empty_exclusion_reason_is_allowed():
     segments = [
         _segment("a.wav:0001", "0900:A", "one", 0.0, 1.0),
         _segment("a.wav:0002", "0900:A", "two", 1.0, 2.0),
@@ -449,10 +453,10 @@ def test_empty_exclusion_reason_is_rejected():
         "corrections": [],
         "name_map": _map(segments),
     }
-    assert review(segments, edited)["ok"] is False
+    assert review(segments, edited)["ok"] is True
 
 
-def test_correction_after_uses_token_boundaries():
+def test_correction_after_is_not_checked():
     segment = _segment("a.wav:0001", "0900:A", "the count is 3", 0.0, 1.0)
     hidden = {
         "rows": [_row(segment, content="the count is 13")],
@@ -461,7 +465,9 @@ def test_correction_after_uses_token_boundaries():
         "corrections": [{"source_ids": [segment["segment_id"]], "before": "3", "after": "3", "reason": "stutter"}],
         "name_map": _map([segment]),
     }
-    assert review([segment], hidden)["ok"] is False
+    hidden_result = review([segment], hidden)
+    assert hidden_result["ok"] is True
+    assert hidden_result["unannotated_losses"] == []
     note = _segment("a.wav:0001", "0900:A", "this is not optional", 0.0, 1.0)
     buried = {
         "rows": [_row(note, content="this is note optional")],
@@ -470,7 +476,9 @@ def test_correction_after_uses_token_boundaries():
         "corrections": [{"source_ids": [note["segment_id"]], "before": "not", "after": "not", "reason": "filler"}],
         "name_map": _map([note]),
     }
-    assert review([note], buried)["ok"] is False
+    buried_result = review([note], buried)
+    assert buried_result["ok"] is True
+    assert buried_result["unannotated_losses"] == []
     kept = {
         "rows": [_row(segment, content="the count is 5")],
         "uncertain": [],
@@ -481,7 +489,7 @@ def test_correction_after_uses_token_boundaries():
     assert review([segment], kept)["ok"] is True
 
 
-def test_editor_name_must_occur_in_the_file():
+def test_editor_can_infer_a_name_without_literal_spelling_in_the_file():
     segment = _segment("a.wav:0001", "0900:A", "Hello", 0.0, 1.0)
     edited = {
         "rows": [_row(segment, speaker="Charlie")],
@@ -499,7 +507,51 @@ def test_editor_name_must_occur_in_the_file():
             }
         },
     }
-    assert review([segment], edited)["ok"] is False
+    assert review([segment], edited)["ok"] is True
+
+
+def test_missing_overlap_maps_and_cjk_character_difference_do_not_block_export():
+    segments = [
+        _segment("a.wav:0001", "0900:A", "不会同意，但这是特别好的渠道。", 0.0, 1.0),
+        _segment("a.wav:0002", "0900:A+0900:B", "嗯。", 1.0, 2.0),
+    ]
+    edited = {
+        "rows": [_row(segments[0], content="不会同意，但这是很好的渠道。"), _row(segments[1])],
+        "uncertain": [],
+        "excluded": [],
+        "corrections": [],
+        "name_map": {},
+    }
+    rows, result, extras = apply_edit(segments, edited, "timed")
+    assert result["ok"] is True
+    assert rows[0]["content"] == "不会同意，但这是很好的渠道。"
+    assert rows[1]["speaker"] == "0900:A+0900:B"
+    assert result["unannotated_losses"] == []
+    assert extras["name_map"]["a.wav"]["0900:A+0900:B"] == {
+        "status": "unknown", "name": "", "origin": "editor"
+    }
+    assert edited["name_map"] == {}
+
+
+def test_omitted_caller_map_is_restored_but_can_be_replaced():
+    segment = _segment("a.wav:0001", "0900:A", "Hello.", 0.0, 1.0)
+    caller = {"name": "Alice", "status": "mapped", "origin": "caller"}
+    confirmed = {"a.wav": {"0900:A": caller}}
+    edited = {"rows": [_row(segment, speaker="Alice")], "excluded": [], "uncertain": []}
+    rows, result, extras = apply_edit([segment], edited, "timed", confirmed)
+    assert result["ok"] is True
+    assert rows[0]["speaker"] == "Alice"
+    assert extras["name_map"]["a.wav"]["0900:A"] == caller
+    edited["name_map"] = {"a.wav": {"0900:A": {**caller, "name": "Bob"}}}
+    assert review([segment], edited, confirmed)["ok"] is False  # Alice no longer has a source mapping.
+    edited["rows"][0]["speaker"] = "Bob"
+    assert review([segment], edited, confirmed)["ok"] is True
+
+
+def test_unused_malformed_mapping_does_not_block_acoustic_label():
+    segment = _segment("a.wav:0001", "0900:A", "Hello.", 0.0, 1.0)
+    edited = {"rows": [_row(segment)], "name_map": {"a.wav": {"0900:A": None}}}
+    assert review([segment], edited)["ok"] is True
 
 
 def test_owned_modified_csv_is_archived_not_lost(tmp_path, monkeypatch):

@@ -47,19 +47,23 @@ An optional external adapter is supported by passing --editor-cmd /path/to/adapt
 
 ## Schema and Rules for edited.json
 
-The keys required in edited.json are rows, excluded, uncertain, corrections, and name_map. Use excluded, not deleted. Each source segment id from segments.jsonl must appear exactly once across rows, uncertain, and excluded. An uncertain row can be first, middle, or last, and the readable CSV keeps it at that source position with speaker unknown.
+The output collections in edited.json are rows, excluded, uncertain, corrections, and name_map. Absent collections default to empty. Each emitted row defines source_ids, start, end, speaker, and content. Sources may be omitted or reused across rows.
 
 Uncertain rows are exported to the readable CSV with speaker unknown.
 
-A combined acoustic label such as 0900:A+0900:B may become one name, such as Alice or Bob, only with reason overlap_attribution and a confidence value. Otherwise, keep the combined label or unknown, and keep the row.
+A combined acoustic label may use its mapped name without an attribution reason or confidence value.
 
-The name_map object indexes filename, then label, with status mapped or unknown, and origin caller or editor. An entry with origin caller is not changed. An unknown entry has an empty name string. Do not invent a name that the words in that file do not support.
+The name_map object indexes filename, then acoustic label. To publish a mapped name, its entry uses status mapped and a non-empty name string. Provided entries may be modified. Omitted mappings are filled as unknown or seeded from caller mappings.
 
-## String Guard Rules
+## Edit Validation
 
-The string guard rejects an unannotated loss of a digit or negation token. Matching is evaluated by token, so 3 inside 13 does not count, and not inside note does not count.
+Only three validation rules are enforced:
 
-When modifying text containing digits or negation tokens, provide an entry in corrections. A correction entry requires before equal to the source token, a non-empty after that appears in the exported text, and a reason. The string guard does not prove the sentences mean the same thing; equivalence_proven is recorded as false.
+1. A published speaker must be unknown, one of that row's known source acoustic labels, or a non-empty mapped name for one of those source labels.
+2. Every uncertain row must have speaker exactly unknown.
+3. Row start/end must be finite with start <= end, inside the envelope of known source intervals within 0.05 seconds. Exports are sorted by first source position; referenced source positions cannot go backwards, nor can row start times within a source file.
+
+Other checks, including token guards, mandatory reasons/evidence, mapping completeness, caller immutability, and cross-label merge bans, are removed. Semantic equivalence is not automatically proven; equivalence_proven remains false.
 
 ## Resumption, Caching, and Legacy Commands
 

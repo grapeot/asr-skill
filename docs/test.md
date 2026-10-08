@@ -31,15 +31,13 @@ The smoke test validates pipeline integrity. It does not prove who spoke.
 
 ## Overlap Attribution Testing
 
-Overlap attribution behavior is covered by offline fixtures, not by a claim that a real overlapping recording was measured. Static fixture tests verify that a combined acoustic label such as 0900:A+0900:B may become one name, such as Alice or Bob, only with reason overlap_attribution and a confidence score.
+Overlap mapping behavior is covered by offline fixtures, not by a claim that a real overlapping recording was measured. Mapped overlap names require no confidence value or attribution reason.
 
-The test fixtures verify that when a confidence score is missing or the attribution reason is absent, the system retains the combined label or unknown, and preserves the row.
+## Edit Validation Tests
 
-## String Guard Unit Tests
+The validation test suite verifies the three active rules. It rejects unsupported speakers, uncertain rows with a speaker other than unknown, timestamps outside source envelopes by more than 0.05 seconds, start greater than end, non-finite timestamps, and reversed source positions or same-file row start times after first-source sorting.
 
-The test suite validates string guard tokenization and rejection rules. The string guard rejects an unannotated loss of a digit or negation token.
-
-Token matching tests confirm that 3 inside 13 does not count, and not inside note does not count. Test cases assert that a correction record requires before equal to the source token, a non-empty after appearing in the exported text, and an explicit reason. Assertions verify that the string guard does not prove semantic equivalence, and equivalence_proven remains false.
+It accepts omitted sources, sources reused across split rows, unannotated token edits, cross-label merges, mapped overlap names without confidence or reason, and valid acoustic labels with malformed unused mapping entries. Split rows referencing the same source must all export. Semantic equivalence is not automatically proven; equivalence_proven remains false.
 
 ## Checkpoint, Resumption, and Legacy Command Tests
 

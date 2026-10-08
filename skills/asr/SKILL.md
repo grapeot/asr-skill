@@ -66,23 +66,29 @@ You may optionally include --confirmed-name-map /path/to/name_map.json to seed c
 
 Second, read instructions.md and segments.jsonl inside /path/to/task_dir . Review each segment text and speaker label.
 
-Third, construct and write /path/to/task_dir/edited.json . The JSON structure must include the following keys:
+Third, construct and write /path/to/task_dir/edited.json . The output collections are:
 - rows: list of active segment objects.
-- excluded: list of segment objects excluded from the transcript. Use excluded, not deleted. Each source segment id must appear exactly once across rows, uncertain, and excluded.
+- excluded: list of segment objects excluded from the transcript. Exclusion reasons are optional.
 - uncertain: a list of row objects, not a list of ids. Each object has source_ids, start, end, speaker, and content. It can be first, middle, or last, and the readable CSV keeps that row at the source position with speaker unknown.
-- corrections: list of explicit token modifications. If a digit or negation token is changed or removed, provide before matching the source token, a non-empty after that appears in exported text, and a reason. The string guard does not prove semantic equivalence; equivalence_proven is false.
-- name_map: mapping of filename to speaker label. Each entry specifies status (mapped or unknown) and origin (caller or editor). A caller entry is not changed. An unknown entry has an empty name string. Do not invent a name that the words in that file do not support, such as Alice or Bob.
+- corrections: optional records of edits; token changes require no annotation.
+- name_map: mapping of filename to acoustic label. To publish a mapped name, its entry uses status mapped and a non-empty name string. Provided entries may be modified. Omitted mappings are filled as unknown or seeded from caller mappings.
 
-A combined acoustic label such as 0900:A+0900:B may become one name only with reason overlap_attribution and a confidence value. Otherwise, keep the combined label or unknown, and keep the row.
+Absent collections default to empty. A combined acoustic label may use its mapped name without an attribution reason or confidence value.
 
 Fourth, run finalize-edit to export results:
 .venv/bin/asr-skill finalize-edit --rich /path/to/rich.json --task-dir /path/to/task_dir --output-csv /path/to/output.csv --source-map /path/to/source_map.json --name-map /path/to/name_map.json --csv-format timed
 
 An optional external adapter may be supplied to clean via --editor-cmd /path/to/adapter . The adapter must be one executable file plus the task directory as its only argument. A shell string is not accepted. The package does not include a semantic editor and does not call a vendor.
 
-## String Guard Rules
+## Edit Validation
 
-The string guard rejects an unannotated loss of a digit or negation token. Matching is evaluated by token, so 3 inside 13 does not count, and not inside note does not count. Any unannotated drop of digits or negation words triggers validation failure.
+Only three validation rules are enforced:
+
+1. A published speaker must be unknown, one of that row's known source acoustic labels, or a non-empty mapped name for one of those source labels.
+2. Every uncertain row must have speaker exactly unknown.
+3. Row start/end must be finite with start <= end, inside the envelope of known source intervals within 0.05 seconds. Exports are sorted by first source position; referenced source positions cannot go backwards, nor can row start times within a source file.
+
+Sources may be omitted or reused across rows. Other checks, including token guards, mandatory reasons/evidence, mapping completeness, caller immutability, and cross-label merge bans, are removed. Semantic equivalence is not automatically proven; equivalence_proven remains false.
 
 ## Resumption, Caching, and Legacy Support
 
