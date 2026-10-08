@@ -52,17 +52,21 @@ The align command always writes transcript.raw.csv as speaker,content and transc
 
 The current agent is the editor. The agent runs prepare-edit, reads instructions.md and segments.jsonl in the task directory, writes edited.json, then runs finalize-edit. An optional external adapter is supported as one executable file plus the task directory as its only argument, specified via --editor-cmd. A shell string is not accepted. The package does not include a semantic editor and does not call a vendor.
 
-The edited.json file uses the keys rows, excluded, uncertain, corrections, and name_map. Use excluded, not deleted. Each source segment id appears once across rows, uncertain, and excluded. An uncertain item is a row object with source_ids, start, end, speaker, and content. It can sit first, in the middle, or last, and the readable CSV keeps it there with speaker unknown.
+The edited.json collections are rows, excluded, uncertain, corrections, and name_map; absent collections default to empty. Each emitted row defines source_ids, start, end, speaker, and content. Sources may be omitted or reused across rows. All split rows are exported.
 
-A combined acoustic label such as 0900:A+0900:B may become one name, such as Alice or Bob, only with reason overlap_attribution and a confidence value. Otherwise, keep the combined label or unknown, and keep the row.
+A combined acoustic label may use its mapped name without an attribution reason or confidence value.
 
-The name_map dictionary maps filename, then label, with status mapped or unknown, and origin caller or editor. A caller entry is not changed. Unknown has an empty name string. Do not invent a name the words in that file do not support.
+The name_map object indexes filename, then acoustic label. To publish a mapped name, its entry uses status mapped and a non-empty name string. Provided entries may be modified. Omitted mappings are filled as unknown or seeded from caller mappings.
 
-## Guardrails and String Guard
+## Edit Validation
 
-The string guard rejects an unannotated loss of a digit or negation token. Matching is by token, so 3 inside 13 does not count, and not inside note does not count.
+Only three validation rules are enforced:
 
-A correction needs before equal to the source token, a non-empty after that appears in the exported text, and a reason. The string guard checks token presence; it does not prove the sentences mean the same thing. equivalence_proven is false.
+1. A published speaker must be unknown, one of that row's known source acoustic labels, or a non-empty mapped name for one of those source labels.
+2. Every uncertain row must have speaker exactly unknown.
+3. Row start/end must be finite with start <= end, inside the envelope of known source intervals within 0.05 seconds. Exports are sorted by first source position; referenced source positions cannot go backwards, nor can row start times within a source file.
+
+Other checks, including token guards, mandatory reasons/evidence, mapping completeness, caller immutability, and cross-label merge bans, are removed. Semantic equivalence is not automatically proven; equivalence_proven remains false.
 
 ## Resumption and Checkpointing
 

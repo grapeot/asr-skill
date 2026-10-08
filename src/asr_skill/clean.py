@@ -10,7 +10,7 @@ from pathlib import Path
 
 from asr_skill.artifacts import read_json, read_jsonl, write_atomic, write_csv, write_json, write_jsonl
 from asr_skill.contracts import EXIT_OK, EXIT_RUNTIME, EXIT_VALIDATION
-from asr_skill.validate import ordered_exports, review
+from asr_skill.validate import complete_name_map, ordered_exports, review
 
 
 def instructions_path() -> Path:
@@ -42,6 +42,7 @@ def apply_edit(
     csv_format: str,
     confirmed: dict | None = None,
 ) -> tuple[list[dict], dict, dict]:
+    edited = complete_name_map(segments, edited, confirmed)
     result = review(segments, edited, confirmed)
     if not result["ok"]:
         return [], result, {}
