@@ -20,7 +20,9 @@ from asr_skill.contracts import (
     MIN_REGION_SEC,
     MLX_QWEN_VERSION,
     MLX_VERSION,
+    NAGISA_VERSION,
     NUMPY_VERSION,
+    SOYNLP_VERSION,
 )
 from asr_skill.timeline import acoustic_labels, assign_speaker, file_prefix, words_to_segments
 
@@ -31,14 +33,29 @@ def _apple() -> bool:
     return sys.platform == "darwin" and platform.machine() == "arm64"
 
 
+def pin_mismatch(name: str, want: str) -> str | None:
+    try:
+        got = metadata.version(name)
+    except metadata.PackageNotFoundError:
+        return f"{name} is not installed. Required {want}."
+    if got != want:
+        return f"{name} {got} != required {want}."
+    return None
+
+
 def check_runtime(model_id: str) -> int:
     if not _apple():
         print("MLX ASR is supported on Apple Silicon only. No other ASR model will be used.", file=sys.stderr)
         return EXIT_UNSUPPORTED
-    for name, want in (("mlx", MLX_VERSION), ("numpy", NUMPY_VERSION)):
-        got = metadata.version(name)
-        if got != want:
-            print(f"{name} {got} != required {want}. Refusing to load {model_id}.", file=sys.stderr)
+    for name, want in (
+        ("mlx", MLX_VERSION),
+        ("numpy", NUMPY_VERSION),
+        ("nagisa", NAGISA_VERSION),
+        ("soynlp", SOYNLP_VERSION),
+    ):
+        mismatch = pin_mismatch(name, want)
+        if mismatch:
+            print(f"{mismatch} Refusing to load {model_id}.", file=sys.stderr)
             return EXIT_MODEL
     version = metadata.version("mlx-qwen3-asr")
     if version != MLX_QWEN_VERSION:

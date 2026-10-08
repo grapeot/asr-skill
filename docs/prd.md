@@ -28,6 +28,8 @@ The exact environment pins are:
 - numpy 2.5.3
 - mlx 0.32.3 with wheel tag cp312-cp312-macosx_26_0_arm64
 - mlx-qwen3-asr 0.4.4
+- nagisa 0.3.0
+- soynlp 0.0.493
 
 ## Command Specifications and Output Formats
 

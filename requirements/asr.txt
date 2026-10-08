@@ -4,3 +4,6 @@
 mlx==0.32.3
 mlx-qwen3-asr==0.4.4
 numpy==2.5.3
+# Timestamp alignment imports these directly. They are the aligner extra, not the diarize extra.
+nagisa==0.3.0
+soynlp==0.0.493

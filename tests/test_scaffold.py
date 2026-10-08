@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_package_version():
-    assert asr_skill.__version__ == "0.1.0"
+    assert asr_skill.__version__ == "0.1.1"
     assert asr_skill.IMPLEMENTED is True
     assert asr_skill.PHASE == "local"
 
@@ -20,7 +20,7 @@ def test_package_version():
 def test_version_command(capsys):
     assert main(["version"]) == 0
     text = capsys.readouterr().out
-    assert "asr-skill 0.1.0" in text
+    assert "asr-skill 0.1.1" in text
     assert "scaffold" not in text
     assert "implemented=false" not in text
 
@@ -79,7 +79,7 @@ def test_module_entrypoint():
         text=True,
     )
     assert proc.returncode == 0
-    assert "0.1.0" in proc.stdout
+    assert "0.1.1" in proc.stdout
 
 
 def test_launcher_script():
@@ -90,4 +90,4 @@ def test_launcher_script():
         text=True,
     )
     assert proc.returncode == 0, proc.stderr
-    assert "0.1.0" in proc.stdout
+    assert "0.1.1" in proc.stdout

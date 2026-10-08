@@ -15,6 +15,8 @@ from asr_skill.contracts import (
     EXIT_OK,
     EXIT_USAGE,
     MLX_QWEN_VERSION,
+    NAGISA_VERSION,
+    SOYNLP_VERSION,
 )
 from asr_skill.manifest import (
     load_manifest,
@@ -94,6 +96,38 @@ def _pin_params(stage: str, model_id: str, extra: dict | None = None) -> dict:
     return payload
 
 
+def _verified_record(checkpoint: dict | None, digest: str, param: str, filename: str) -> dict | None:
+    if checkpoint is None or checkpoint.get("status") != "complete":
+        return None
+    if checkpoint.get("input_sha256") != digest or checkpoint.get("params_sha256") != param:
+        return None
+    return {
+        "status": "complete",
+        "input_sha256": digest,
+        "params_sha256": param,
+        "empty_speech": bool(checkpoint.get("empty_speech", False)),
+        "file": filename,
+    }
+
+
+def _harvest(manifest: dict, paths: list[Path], work_dir: Path, stage: str, suffix: str, param: str) -> list[str]:
+    missing = []
+    for source in paths:
+        key = source_key(source)
+        digest = sha256_file(source)
+        record = _verified_record(read_checkpoint(_checkpoint(work_dir, key, suffix)), digest, param, source.name)
+        if record is None:
+            missing.append(source.name)
+            continue
+        manifest.setdefault("files", {}).setdefault(key, {})[stage] = record
+    return missing
+
+
+def _fail_stage(manifest: dict, manifest_path: Path, stage: str) -> None:
+    manifest.setdefault("stages", {})[stage] = "failed"
+    save_manifest(manifest_path, manifest)
+
+
 def retire_clean(work_dir: Path) -> None:
     from asr_skill.artifacts import write_atomic
     import time
@@ -161,27 +195,18 @@ def diarize_paths(
         proc = run_module(python, "asr_skill.runners.diarize", ["--jobs", str(job_path)])
         if proc.returncode != 0:
             sys.stderr.write(proc.stderr or "")
-            manifest.setdefault("stages", {})["diarize"] = "failed"
-            save_manifest(manifest_path, manifest)
+            _harvest(manifest, paths, work_dir, "diarize", "diar", param)
+            _fail_stage(manifest, manifest_path, "diarize")
             return emit_failure(proc, "diarize"), {}
+    missing = _harvest(manifest, paths, work_dir, "diarize", "diar", param)
+    if missing:
+        _fail_stage(manifest, manifest_path, "diarize")
+        print(f"diarization checkpoint missing for {missing[0]}", file=sys.stderr)
+        return EXIT_MODEL, {}
     files = []
     for source in paths:
         key = source_key(source)
-        output = _checkpoint(work_dir, key, "diar")
-        checkpoint = read_checkpoint(output)
-        if checkpoint is None or checkpoint.get("status") != "complete":
-            manifest.setdefault("stages", {})["diarize"] = "failed"
-            save_manifest(manifest_path, manifest)
-            print(f"diarization checkpoint missing for {source.name}", file=sys.stderr)
-            return EXIT_MODEL, {}
-        record = manifest.setdefault("files", {}).setdefault(key, {})
-        record["diarize"] = {
-            "status": "complete",
-            "input_sha256": sha256_file(source),
-            "params_sha256": param,
-            "empty_speech": checkpoint.get("empty_speech", False),
-            "file": source.name,
-        }
+        checkpoint = read_checkpoint(_checkpoint(work_dir, key, "diar"))
         files.append(checkpoint["payload"]["files"][0])
     combined = {
         "date_dir": date_dir,
@@ -236,7 +261,13 @@ def align_paths(
     if set(by_name) != {path.name for path in paths}:
         print("diarization file set does not match this input set. Refusing to align.", file=sys.stderr)
         return EXIT_USAGE, []
-    param = params_hash(_pin_params("align", model_id, {"diar_sha256": diar_sha}))
+    param = params_hash(
+        _pin_params(
+            "align",
+            model_id,
+            {"diar_sha256": diar_sha, "nagisa": NAGISA_VERSION, "soynlp": SOYNLP_VERSION},
+        )
+    )
     jobs = []
     for source in paths:
         key = source_key(source)
@@ -265,25 +296,18 @@ def align_paths(
         proc = run_module(python, "asr_skill.runners.align", ["--jobs", str(job_path)])
         if proc.returncode != 0:
             sys.stderr.write(proc.stderr or "")
-            manifest.setdefault("stages", {})["align"] = "failed"
-            save_manifest(work_dir / "manifest.json", manifest)
+            _harvest(manifest, paths, work_dir, "align", "align", param)
+            _fail_stage(manifest, work_dir / "manifest.json", "align")
             return emit_failure(proc, "align"), []
+    missing = _harvest(manifest, paths, work_dir, "align", "align", param)
+    if missing:
+        _fail_stage(manifest, work_dir / "manifest.json", "align")
+        print(f"align checkpoint missing for {missing[0]}", file=sys.stderr)
+        return EXIT_MODEL, []
     rows: list[dict] = []
     for source in paths:
         key = source_key(source)
-        output = _checkpoint(work_dir, key, "align")
-        checkpoint = read_checkpoint(output)
-        if checkpoint is None:
-            print(f"align checkpoint missing for {source.name}", file=sys.stderr)
-            return EXIT_MODEL, []
-        record = manifest.setdefault("files", {}).setdefault(key, {})
-        record["align"] = {
-            "status": "complete",
-            "input_sha256": sha256_file(source),
-            "params_sha256": param,
-            "empty_speech": checkpoint.get("empty_speech", False),
-            "file": source.name,
-        }
+        checkpoint = read_checkpoint(_checkpoint(work_dir, key, "align"))
         rows.extend(checkpoint.get("rows") or [])
     staged_rich = work_dir / "checkpoints" / "rich.staged.jsonl"
     staged_raw = work_dir / "checkpoints" / "raw.staged.csv"
