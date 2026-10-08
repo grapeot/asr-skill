@@ -1,43 +1,50 @@
-# Test Plan and Verification Protocol: asr-skill
+# Verification and Testing Guide
 
-## Test Strategy Overview
+## Scope of Verification
 
-The testing methodology for asr-skill is separated into distinct phases corresponding to the project development status. The primary objective for the current scaffold phase is verifying operational truthfulness: ensuring that the repository imports cleanly as a Python package, reports its unready status accurately through its CLI entry points, strictly refuses to execute unimplemented pipeline stages, and contains no committed secrets or private file paths.
+Testing for asr-skill verifies environment configuration, acoustic pipeline execution, editor protocol compliance, string guard rules, and resume semantics. Verification has been conducted on one Apple Silicon machine, CPython 3.12, not on every Apple Silicon OS release. Linux CI does not run these acoustic models. The tests do not assert word error rates, benchmark numbers, latency claims, or speaker-identity proofs.
 
-All test procedures specified for this phase run strictly offline. They do not download model weights, invoke machine learning inference engines, or read live audio recordings.
+Supported testing requires a persistent checkout at /path/to/asr-skill from https://github.com/grapeot/asr-skill . Copied skill files, wheel distributions, and pipx installations are not supported.
 
-## Offline Unit Checks
+## Environment and Dependency Verification
 
-Automated testing for the scaffold relies on fast, offline unit checks:
+Run asr-skill doctor to inspect the runtime environment. The command verifies local caching by loading both models, nvidia/Nemotron-3-Diarization on CPU and Qwen/Qwen3-ASR-1.7B through MLX, directly from local storage without downloading weights.
 
-1. Package Import Verification: Confirms that `import asr_skill` succeeds in an isolated Python 3.12 environment that lacks PyTorch, Transformers, or Apple MLX. This check verifies that the core package maintains zero heavy machine learning dependencies.
-2. CLI Version Text Match: Executes `asr-skill version` and asserts that stdout matches the expected line: `asr-skill 0.0.0 phase=scaffold implemented=false`. The test also checks that the version string matches the version declared in `pyproject.toml`.
-3. CLI Doctor Diagnostic Check: Runs `asr-skill doctor` and parses the output as JSON. It asserts that `command` is `doctor`, `phase` is `scaffold`, and that `implemented`, `models_ready`, and `network` are false. The test confirms that the doctor command does not attempt network connections or external process calls to ffmpeg.
-4. Planned Command Refusal: Sequentially invokes all planned pipeline commands: `init`, `diarize`, `align`, `clean`, `run`, and `smoke`. The test asserts that each command terminates with exit code 3 and outputs a JSON object whose `error` field equals `not_implemented`.
-5. Synthetic Contract Fixture Validation: Validates the synthetic test files in `examples/synthetic/`:
-   - `alice_bob_rich.jsonl`
-   - `alice_bob_raw.csv`
-   - `alice_bob_readable.csv`
-   - `alice_bob_name_map.json`
-   - `alice_bob_source_map.json`
-   The check ensures that the CSV schemas contain exactly two columns (`speaker,content`), confirms that Alice and Bob are mapped while an unmapped acoustic speaker remains `unknown` and appears in the source map deletion list, and asserts that the number 3 and the word "not" are present in the corresponding raw and readable rows.
-6. Repository Sanitization Scan: A static analysis test scans the entire repository tree to ensure that no private paths, password-manager references, or real email domains exist in tracked files.
+Run asr-skill doctor --no-load to test package imports and declared dependency pins without loading model weights into memory. The doctor command refuses any version or commit mismatch against the declared pins:
 
-## Deferred Integration and Model Tests
+- torch 2.14.0 with wheel tag cp312-cp312-macosx_14_0_arm64
+- transformers git commit f339035b986aaf719bc6f5ea92342f73c498cb0e reporting 5.18.0.dev0
+- librosa 1.0.0
+- numpy 2.5.3
+- mlx 0.32.3 with wheel tag cp312-cp312-macosx_26_0_arm64
+- mlx-qwen3-asr 0.4.4
 
-Integration tests and end-to-end model inference runs do not exist in this phase. The scaffold must not claim that transcription works or fabricate synthetic test results. End-to-end tests require multi-gigabyte neural network weights, hardware acceleration via Apple Silicon MLX, and specialized audio frame classification builds. Executing these tests during scaffold evaluation would violate project boundaries and distort operational readiness.
+If an explicit model download fails during initialization, this package does not retry the download, although underlying HTTP libraries may execute transport retries.
 
-Before any integration or model-level tests are introduced in subsequent phases, the test suite will first implement deterministic contract tests:
-- Source Map Accounting Validator: Asserts that 100% of canonical rich segment identifiers appear either in readable rows or within the deleted list with an explicit reason.
-- Invariant Token Retention Validator: Injects synthetic transcript segments containing numbers or negation tokens (`not`, `no`, `never`, `不`, `没`, `未`, `别`) and verifies that any simulated cleaning output that drops all instances of these tokens triggers an immediate test failure.
+## Synthetic Smoke Verification
 
-## Manual Verification Procedure Today
+Run asr-skill smoke to test the end-to-end processing pipeline. On macOS environments where say voices Eddy and Daniel exist, the command generates audio samples, runs diarization and alignment, and produces formatted transcripts.
 
-Manual verification of the repository is limited to running the two implemented CLI commands from a local checkout:
+The smoke test validates pipeline integrity. It does not prove who spoke.
 
-```bash
-asr-skill version
-asr-skill doctor
-```
+## Overlap Attribution Testing
 
-Equivalent invocations via `python -m asr_skill version` and `scripts/asr-skill version` may also be executed. The tester observes the returned output to confirm that the package reports its scaffold status. Pass or fail results must not be invented.
+Overlap attribution behavior is covered by offline fixtures, not by a claim that a real overlapping recording was measured. Static fixture tests verify that a combined acoustic label such as 0900:A+0900:B may become one name, such as Alice or Bob, only with reason overlap_attribution and a confidence score.
+
+The test fixtures verify that when a confidence score is missing or the attribution reason is absent, the system retains the combined label or unknown, and preserves the row.
+
+## String Guard Unit Tests
+
+The test suite validates string guard tokenization and rejection rules. The string guard rejects an unannotated loss of a digit or negation token.
+
+Token matching tests confirm that 3 inside 13 does not count, and not inside note does not count. Test cases assert that a correction record requires before equal to the source token, a non-empty after appearing in the exported text, and an explicit reason. Assertions verify that the string guard does not prove semantic equivalence, and equivalence_proven remains false.
+
+## Checkpoint, Resumption, and Legacy Command Tests
+
+Resumption tests confirm that a file is skipped only when the checkpoint parses, status is complete, and the input hash, parameter hash, and current diarization hash match. Checkpoints use a path hash, not only the basename. Tests assert that batches containing duplicate basenames are rejected.
+
+Tests assert that an empty speech result produces a completed empty output, rather than triggering repeated executions. Tests verify that a failed diarization does not leave the previous combined file as the current result, and an acoustic rerun moves an existing readable draft to history instead of deleting it.
+
+Legacy command tests verify legacy-diarize and legacy-align. The tests ensure that date_dir and audio_dir structures are preserved, audio files are located using the diarization JSON, checkpoints are not written into date_dir, and outputs not owned by the tool are not overwritten.
+
+Output tests ensure that align always writes transcript.raw.csv as speaker,content and transcript.timed.csv as start,end,speaker,content. The tests check that legacy-align defaults to the two-column CSV, while --csv-format controls clean, finalize-edit, and run, defaulting to timed.

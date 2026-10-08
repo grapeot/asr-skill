@@ -1,0 +1,8 @@
+# Verified here: CPython 3.12, torch wheel cp312-cp312-macosx_14_0_arm64.
+# This does not mean every Apple Silicon OS release resolves the same wheel.
+# transformers commit f339035b986aaf719bc6f5ea92342f73c498cb0e reports 5.18.0.dev0.
+# CPU diarization only. Do not substitute another model or another transformers build.
+torch==2.14.0
+numpy==2.5.3
+librosa==1.0.0
+transformers @ git+https://github.com/huggingface/transformers.git@f339035b986aaf719bc6f5ea92342f73c498cb0e

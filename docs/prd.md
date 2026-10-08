@@ -2,74 +2,63 @@
 
 ## Overview and Purpose
 
-The asr-skill project specifies a modular, local-first system for speaker-attributed speech transcription. The intended system converts multi-speaker audio into structured, auditable text. Audio processing, diarization, recognition, and file writes stay on the machine. None of that processing is implemented in this scaffold.
+The asr-skill package provides local speaker-attributed speech transcription on Apple Silicon hardware. Diarization is performed on CPU using nvidia/Nemotron-3-Diarization, and acoustic speech recognition is performed through MLX using Qwen/Qwen3-ASR-1.7B. Acoustic inference stays on this machine. If an external editor is configured, that editor may send text to its own service. There is no promise that text never leaves the machine.
 
-This document specifies user personas, current operational limitations, phased requirements, success criteria, and non-goals.
+The target audience includes autonomous agents and engineers, such as Alice and Bob, who require local transcription with structured, guarded post-processing.
 
-## Users and Target Personas
+## Installation and Environment Requirements
 
-The system serves three primary groups:
+The repository is hosted at https://github.com/grapeot/asr-skill . Supported installation is a persistent checkout, such as /path/to/asr-skill . Copied skill files, wheel distributions, and pipx installations are not supported. An agent starts from the host AGENTS.md or CLAUDE.md, follows any routing file, clones or vendors this repository, and registers only skills/asr/SKILL.md. The pointer must locate that checkout.
 
-1. Software Engineers and Researchers: Technical users who record discussions, interviews, and voice memos on workstations. These users require speaker labels tied to the original recording timeline, local processing, predictable execution, and control over the model environments.
-2. Autonomous Coding Agents: Tool-using software agents (including Codex, Claude Code, Cursor, and OpenCode) that inspect repositories, install command-line tools, configure workspace skills, and verify operational boundaries. These agents require unambiguous operational contracts, structured exit codes, machine-readable diagnostics, and deterministic installation steps independent of any specific LLM vendor.
-3. Downstream Automation Pipelines: Existing external scheduled jobs and daily processing scripts that consume transcript data. These consumers depend on fixed column contracts and backward-compatible flag semantics.
+The host environment requires CPython 3.12 configured through uv venv --python 3.12 . Users activate the environment with source .venv/bin/activate or invoke .venv/bin/asr-skill directly. Project installation requires uv pip install -e '.[dev]' . The system PATH must include the ffmpeg binary.
 
-## Problem Statement
+The asr-skill init command creates two distinct virtual environments, .venvs/diar and .venvs/asr, using requirements/diar.txt and requirements/asr.txt. Dependency installation may use the network. When executed with --no-download, asr-skill init omits downloading model weights; if the local cache is missing, subsequent model loading fails.
 
-Automated transcription tools commonly suffer from three core limitations:
+The asr-skill doctor command inspects the installation by loading both models from the local cache without downloading weights. The lightweight check asr-skill doctor --no-load verifies package imports and declared pins only.
 
-Cloud-based transcription APIs introduce privacy risks for proprietary discussions or personal audio. Local alternatives often bundle diarization, speech recognition, and text cleaning into monolithic scripts that cannot be isolated or tested independently.
+## Target Platform and Verification Scope
 
-Second, existing local pipelines introduce silent data corruption. Heuristic text cleaners strip filler words with regular expressions, accidentally removing negative qualifiers, conditions, or numbers. Tools frequently merge speaker labels based on speculative keyword matching, destroying speaker boundaries. When audio is cut and concatenated prior to diarization, the true temporal timeline is corrupted.
+The implementation is verified on one Apple Silicon machine, CPython 3.12, not on every Apple Silicon OS release. Linux CI does not run these acoustic models. The doctor command refuses any version or commit mismatch. Explicit download failures are not retried by this package, though underlying HTTP libraries may handle internal retries.
 
-Third, deep learning libraries such as PyTorch, Transformers, and MLX introduce massive binary dependencies that conflict with system packages. Forcing these libraries into default installs breaks continuous integration on Linux runners and prevents clean adoption across diverse platforms.
+The exact environment pins are:
 
-## Success Criteria
+- torch 2.14.0 with wheel tag cp312-cp312-macosx_14_0_arm64
+- transformers git commit f339035b986aaf719bc6f5ea92342f73c498cb0e reporting 5.18.0.dev0
+- librosa 1.0.0
+- numpy 2.5.3
+- mlx 0.32.3 with wheel tag cp312-cp312-macosx_26_0_arm64
+- mlx-qwen3-asr 0.4.4
 
-Project success is evaluated across two distinct development phases:
+## Command Specifications and Output Formats
 
-### Current Phase: Project Scaffold
+The CLI supports the following commands: version, doctor, init, diarize --input --work-dir, align --input --work-dir, prepare-edit --rich --task-dir [--confirmed-name-map], finalize-edit --rich --task-dir --output-csv --source-map --name-map [--csv-format legacy|timed], clean --editor-cmd, run, smoke, legacy-diarize --date-dir [--output] [--model] [--work-dir], and legacy-align --date-dir --diarization --output [--rich-output] [--model] [--work-dir].
 
-1. Package Scaffolding: The core package installs and imports cleanly as `asr_skill` in a Python 3.12+ environment without requiring PyTorch, Transformers, or MLX.
-2. Truthful Execution Boundaries: The command-line interface explicitly refuses to execute unimplemented capabilities. The `version` command reports `asr-skill 0.0.0 phase=scaffold implemented=false`. The `doctor` command prints JSON with `implemented` set to false, `models_ready` set to false, and `network` set to false, without invoking ffmpeg, machine learning models, or network sockets.
-3. Stub Refusal: All planned pipeline subcommands (`init`, `diarize`, `align`, `clean`, `run`, and `smoke`) exit immediately with return code 3 and return a JSON payload with an error field set to `not_implemented`.
-4. Documentation Accuracy: All documentation, test plans, and skill manifests consistently state that transcription is not yet implemented.
+The align command always produces two CSV files: transcript.raw.csv with columns speaker,content and transcript.timed.csv with columns start,end,speaker,content. The legacy-align command defaults to the two-column CSV. The option --csv-format accepts legacy or timed. It governs clean, finalize-edit, and the readable CSV created by run. The default readable format is timed.
 
-### Future Phase: Full Pipeline Implementation
+## Editing Protocol and Data Contracts
 
-1. Deterministic Artifact Generation: Given an input audio file, the pipeline produces three primary artifacts: a canonical rich JSONL segment record, a verbatim raw CSV, and a readable cleaned CSV with exactly two columns (`speaker,content`).
-2. Complete Traceability: A sidecar source map accounts for every segment identifier from the canonical rich record, verifying that each segment either maps to a readable row or appears in a deleted list with an explicit reason.
-3. Speaker Integrity: Speaker assignment maintains a strict distinction between mapped names and unknown speakers. Acoustic labels with insufficient evidence remain labeled by their acoustic identifier. No speaker identities are assigned by keyword heuristics or guesswork.
-4. Semantic Invariant Preservation: The cleaning stage preserves all conditional phrases, numerical figures, and negation tokens. Any dropped number or negation token triggers deterministic validation failure.
-5. External Compatibility: External daily jobs can call this library through thin wrappers that keep the legacy flags and artifact names, without a second implementation.
+The current agent is the editor. The editing workflow runs prepare-edit, inspects instructions.md and segments.jsonl in the task directory, writes edited.json, and runs finalize-edit. An optional external adapter is supported as one executable file plus the task directory as its only argument, passed via --editor-cmd. A shell string is not accepted. The package does not include a semantic editor and does not call a vendor.
 
-## Functional Requirements
+The edited.json payload requires keys rows, excluded, uncertain, corrections, and name_map. The schema mandates excluded, not deleted. Each source segment id must appear exactly once across rows, uncertain, and excluded. An uncertain row can be first, middle, or last, and the readable CSV keeps it at that source position with speaker unknown.
 
-The core package is released under the MIT license with package name `asr-skill`, importable as `asr_skill`. It requires Python 3.12+ and uses `uv` for environment management. The default installation omits heavy machine learning libraries, allowing continuous integration jobs on Ubuntu runners to import the package without GPU hardware.
+A combined acoustic label such as 0900:A+0900:B may become one name, such as Alice or Bob, only with reason overlap_attribution and a confidence score. Otherwise, the combined label or unknown must be retained, and the row must not be dropped.
 
-Model runtimes operate in two isolated environments outside the core package:
-- Diarization: `nvidia/Nemotron-3-Diarization` on CPU in a dedicated environment with matching audio frame classification libraries.
-- Speech Recognition: `Qwen/Qwen3-ASR-1.7B` through MLX on Apple Silicon in an independent environment. Absence of MLX on Linux CI is not an installation failure.
+The name_map object maps filename, then label, with status mapped or unknown, and origin caller or editor. A caller entry is not changed. Unknown has an empty name string. The editor must not invent a name that the words in that file do not support.
 
-Weights download only on explicit user request to standard cache locations (`HF_HOME`). Weights, recordings, and local environments are never committed.
+## Guardrails, Resumption, and Data Integrity
 
-Diarization runs on the original recording timeline without prior cutting or concatenation. Analysis uses 10 ms frames, drops fragments shorter than 0.15 seconds, merges same-speaker segments separated by up to 0.3 seconds, and groups speech regions across pauses up to 1.0 second. If direct audio decoding fails, ffmpeg converts the input to a temporary 16 kHz mono WAV file, which is deleted immediately after inference.
+The string guard rejects an unannotated loss of a digit or negation token. Token matching ensures that 3 inside 13 does not count, and not inside note does not count. A valid correction requires before equal to the source token, a non-empty after appearing in exported text, and an explanatory reason. The string guard does not prove semantic equivalence; equivalence_proven is recorded as false.
 
-Speech regions are sliced with ffmpeg and transcribed with word timestamps. Each word is mapped to a diarization segment by its midpoint time. Words outside segments map to the nearest segment within 1.5 seconds or remain unassigned. Overlapping speech receives composite acoustic labels (such as `0900:A+0900:B`).
+Resumption skips an input file only when the checkpoint parses, status is complete, and the input hash, parameter hash, and current diarization hash match. Checkpoints use a path hash, not only the basename. Duplicate basenames in one batch are rejected.
 
-Acoustic labels derive prefixes from filename stems: stems ending in `_HHMM` provide four digits; otherwise the full stem is used. Sequential letters (A, B, C) reflect first appearance in that file. Words are grouped into utterances using mechanical boundaries: pauses over 3.0 seconds start a new line; fragments under 3 characters merge into neighboring lines if within 15.0 seconds; lines over 400 characters split at punctuation.
+An empty speech result is treated as a completed empty output, not a reason to rerun forever. A failed diarization does not leave the previous combined file as the current result. An acoustic rerun moves an existing readable draft to history instead of deleting it.
 
-The pipeline outputs three artifacts: canonical rich JSONL segments (`segment_id`, `file`, `start`, `end`, `speaker`, `content`), raw CSV (`speaker,content`), and readable CSV (`speaker,content`). A sidecar source map tracks each rich segment to readable rows or records deletion reasons. Acoustic labels have status `mapped` or `unknown`. Display names replace acoustic labels only in the readable CSV at emission time; canonical rich files are never modified.
+Legacy commands preserve date_dir and audio_dir and locate audio from diarization JSON. They do not write checkpoints into the date directory, and they refuse to overwrite an existing output that this tool does not own.
 
-Semantic cleaning runs via an external AI reader through an isolated task directory. The core library holds no LLM credentials. The cleaner fixes repetitions, duplicate lines, and recognition errors while keeping conditions, numbers, and negations (`not`, `no`, `never`, `不`, `没`, `未`, `别`). A deterministic validation gate enforces complete segment accounting and fails if numbers or negation tokens are lost. Successful validation triggers atomic artifact replacement.
+## Privacy, Version Control, and Testing
 
-A local JSON run manifest tracks stage states (`pending`, `running`, `complete`, `failed`), input hashes, and outputs for idempotent execution. External legacy wrappers adapt date-directory flags (`--date-dir`, `--output`, `--rich-output`, `--model`) and artifact names (`diarization.json`, `transcript_<date>.csv`, `transcript_<date>.rich.jsonl`) to explicit CLI arguments.
+Acoustic inference stays on this machine. A configured editor may send text to its own service. There is no promise that text never leaves the machine. Dependency install may use the network.
 
-## Non-Goals
+Recordings and weights should stay out of git. The repository ignore rules cover generated names this tool writes, but they are not a guarantee against every possible path.
 
-1. Remote Services: No hosted transcription APIs, cloud storage adapters, or remote telemetry.
-2. Direct LLM Dependencies: The core package does not bundle LLM client libraries or read LLM API keys.
-3. Heavy ML in Core: PyTorch and MLX are excluded from the default package install.
-4. Cross-File Identity: The system does not perform global voice biometrics or automatic cross-file identity linking.
-5. Heuristic Regex Cleaning: The package will not implement regular-expression filler stripping or keyword-based speaker assignment.
-6. Downstream Life Daemons: Background recording services, audio ingestion daemons, and daily summary generators remain external to this repository.
+A synthetic smoke test is executed with asr-skill smoke. It uses macOS say voices Eddy and Daniel when they exist. It does not prove who spoke. Overlap attribution is covered by offline fixtures, not by a claim that a real overlapping recording was measured.

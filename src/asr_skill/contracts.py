@@ -1,22 +1,34 @@
-"""Identifiers for the scaffold. These names do not run models."""
+"""Public identifiers and verified runtime pins."""
 
-PHASE = "scaffold"
-IMPLEMENTED = False
+PHASE = "local"
+IMPLEMENTED = True
 
 DIARIZATION_MODEL_ID = "nvidia/Nemotron-3-Diarization"
 ASR_MODEL_ID = "Qwen/Qwen3-ASR-1.7B"
+DIAR_TRANSFORMERS_COMMIT = "f339035b986aaf719bc6f5ea92342f73c498cb0e"
+DIAR_TRANSFORMERS_VERSION = "5.18.0.dev0"
+TORCH_VERSION = "2.14.0"
+LIBROSA_VERSION = "1.0.0"
+NUMPY_VERSION = "2.5.3"
+MLX_VERSION = "0.32.3"
+MLX_QWEN_VERSION = "0.4.4"
+VERIFIED_PLATFORM = "macOS arm64, CPython 3.12"
 
 FRAME_MS = 10.0
 MIN_SEGMENT_SEC = 0.15
 SAME_SPEAKER_MERGE_GAP_SEC = 0.3
 SPEECH_REGION_MERGE_GAP_SEC = 1.0
 NEAR_SEGMENT_SEC = 1.5
+MIN_REGION_SEC = 0.3
 UTTERANCE_GAP_SEC = 3.0
 SHORT_LINE_CHARS = 3
 SHORT_MERGE_GAP_SEC = 15.0
 LONG_LINE_CHARS = 400
+MAX_INPUT_SECONDS = 7200
+UNASSIGNED_LABEL = "?"
 
 RAW_CSV_FIELDS = ("speaker", "content")
+TIMED_CSV_FIELDS = ("start", "end", "speaker", "content")
 RICH_SEGMENT_FIELDS = (
     "segment_id",
     "file",
@@ -26,10 +38,12 @@ RICH_SEGMENT_FIELDS = (
     "content",
 )
 NAME_MAP_STATUSES = ("mapped", "unknown")
+AUDIO_SUFFIXES = (".m4a", ".mp3", ".wav", ".flac", ".mp4", ".mov")
 
 EXIT_OK = 0
 EXIT_USAGE = 2
-EXIT_NOT_IMPLEMENTED = 3
-
-SCAFFOLD_COMMANDS = ("version", "doctor")
-PLANNED_COMMANDS = ("init", "diarize", "align", "clean", "run", "smoke")
+EXIT_UNSUPPORTED = 3
+EXIT_RUNTIME = 4
+EXIT_MODEL = 5
+EXIT_VALIDATION = 6
+EXIT_NETWORK = 7

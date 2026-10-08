@@ -1,5 +1,7 @@
 {
-  "0900:A": {"name": "Alice", "status": "mapped"},
-  "0900:B": {"name": "Bob", "status": "mapped"},
-  "0900:C": {"name": null, "status": "unknown"}
+  "synthetic_0900.wav": {
+    "0900:A": {"name": "Alice", "status": "mapped", "origin": "editor", "source_id": "seg-002", "evidence": "No, Alice"},
+    "0900:B": {"name": "Bob", "status": "mapped", "origin": "editor", "source_id": "seg-001", "evidence": "Hello Bob"},
+    "0900:C": {"name": null, "status": "unknown", "origin": "editor"}
+  }
 }
