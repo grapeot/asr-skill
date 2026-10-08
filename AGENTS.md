@@ -28,6 +28,8 @@ The exact dependency pins are:
 - numpy 2.5.3
 - mlx 0.32.3 with wheel tag cp312-cp312-macosx_26_0_arm64
 - mlx-qwen3-asr 0.4.4
+- nagisa 0.3.0
+- soynlp 0.0.493
 
 Acoustic models are nvidia/Nemotron-3-Diarization on CPU and Qwen/Qwen3-ASR-1.7B through MLX.
 
@@ -61,7 +63,7 @@ When modifying text containing digits or negation tokens, provide an entry in co
 
 ## Resumption, Caching, and Legacy Commands
 
-Resume skips a file only when the checkpoint parses, status is complete, and the input hash, parameter hash, and current diarization hash match. Checkpoints use a path hash, not only the basename. Duplicate basenames in one batch are rejected.
+Resume skips a file only when the checkpoint parses, status is complete, and the input hash, parameter hash, and current diarization hash match. A failed batch still records those verified checkpoints, marks the stage failed, and does not publish a partial combined file as current. The next run sends only failed or missing files. Checkpoints use a path hash, not only the basename. Duplicate basenames in one batch are rejected.
 
 An empty speech result is treated as a completed empty output, not a reason to rerun forever. A failed diarization does not leave the previous combined file as the current result. An acoustic rerun moves an existing readable draft to history instead of deleting it.
 

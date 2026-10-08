@@ -33,6 +33,8 @@ The declared pins are:
 - numpy 2.5.3
 - mlx 0.32.3 with wheel tag cp312-cp312-macosx_26_0_arm64
 - mlx-qwen3-asr 0.4.4
+- nagisa 0.3.0
+- soynlp 0.0.493
 
 ## Command Set
 
@@ -85,6 +87,8 @@ The string guard rejects an unannotated loss of a digit or negation token. Match
 ## Resumption, Caching, and Legacy Support
 
 Resume skips a file only when the checkpoint parses, status is complete, and the input hash, parameter hash, and current diarization hash match. Checkpoints use a path hash, not only the basename. Duplicate basenames in one batch are rejected.
+
+A failed diarization or alignment batch still records a checkpoint when that checkpoint parses, status is complete, and the input hash, parameter hash, and current diarization hash match. The stage is failed. A partial batch does not replace the combined output or mark it current. The next run sends only files that failed or have no verified checkpoint. A changed input or parameter hash is not reused. The alignment parameter hash now includes the tokenizer pins, so an older alignment checkpoint is not reused. The diarization parameter hash is unchanged. The acoustic algorithm for a successful file is unchanged.
 
 An empty speech result is a completed empty output, not a reason to rerun forever. A failed diarization does not leave the previous combined file as the current result. An acoustic rerun moves an existing readable draft to history instead of deleting it.
 

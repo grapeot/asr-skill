@@ -22,8 +22,12 @@ The package is verified on one Apple Silicon machine, CPython 3.12, not on every
 - numpy 2.5.3
 - mlx 0.32.3 with wheel tag cp312-cp312-macosx_26_0_arm64
 - mlx-qwen3-asr 0.4.4
+- nagisa 0.3.0
+- soynlp 0.0.493
 
 Diarization is nvidia/Nemotron-3-Diarization on CPU. ASR is Qwen/Qwen3-ASR-1.7B through MLX. Linux CI does not run these models. The doctor command refuses a version or commit mismatch. A failed explicit download is not retried by this package. That does not describe every retry inside an HTTP library.
+
+Version 0.1.1 adds two direct timestamp dependencies from the mlx-qwen3-asr 0.4.4 aligner extra: nagisa 0.3.0 and soynlp 0.0.493, and asr-skill init installs them from requirements/asr.txt. doctor and doctor --no-load refuse a missing or different version, a missing tokenizer is a failure, and the package does not switch models, drop a language, or use another tokenizer.
 
 ## Command Line Interface
 
@@ -63,6 +67,8 @@ A correction needs before equal to the source token, a non-empty after that appe
 ## Resumption and Checkpointing
 
 Resume skips a file only when the checkpoint parses, status is complete, and the input hash, parameter hash, and current diarization hash match. An empty speech result is a completed empty output, not a reason to rerun forever. A failed diarization does not leave the previous combined file as the current result.
+
+A failed diarization or alignment batch still records a checkpoint when that checkpoint parses, status is complete, and the input hash, parameter hash, and current diarization hash match. The stage is failed. A partial batch does not replace the combined output or mark it current. The next run sends only files that failed or have no verified checkpoint. A changed input or parameter hash is not reused. The alignment parameter hash now includes the tokenizer pins, so an older alignment checkpoint is not reused. The diarization parameter hash is unchanged. The acoustic algorithm for a successful file is unchanged.
 
 An acoustic rerun moves an existing readable draft to history instead of deleting it. Duplicate basenames in one batch are rejected. Checkpoints use a path hash, not only the basename. Legacy commands keep date_dir and audio_dir and find audio from the diarization JSON. They do not write checkpoints into the date directory, and they refuse to overwrite an existing output that this tool does not own.
 

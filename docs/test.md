@@ -18,6 +18,8 @@ Run asr-skill doctor --no-load to test package imports and declared dependency p
 - numpy 2.5.3
 - mlx 0.32.3 with wheel tag cp312-cp312-macosx_26_0_arm64
 - mlx-qwen3-asr 0.4.4
+- nagisa 0.3.0
+- soynlp 0.0.493
 
 If an explicit model download fails during initialization, this package does not retry the download, although underlying HTTP libraries may execute transport retries.
 
